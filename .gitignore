@@ -1,0 +1,21 @@
+# Python bytecode
+__pycache__/
+*.pyc
+
+# datasets (large; rebuild with tools/gen_uav_json.py and tools/make_short_data.py)
+testing_dataset/
+short_train/
+short_test/
+training_dataset/*/crop511/
+training_dataset/*/*.json
+training_dataset/*/data/
+
+# model weights, training output, tracking results
+tools/snapshot/
+tools/snapshot*/
+tools/logs*/
+tools/results/
+*.pth
+
+# papers / notes
+*.pdf

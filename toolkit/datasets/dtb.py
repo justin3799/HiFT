@@ -72,11 +72,10 @@ class DTBVideo(Video):
             else:
                 print(traj_file)
         self.tracker_names = list(self.pred_trajs.keys())
-def ca():
+def ca(path):
     
 
     
-    path='./test_dataset/DTB70'
     txt='groundtruth_rect.txt'
     name_list=os.listdir(path)
     name_list.sort()
@@ -136,7 +135,12 @@ class DTBDataset(Dataset):
         super(DTBDataset, self).__init__(name, dataset_root)
         # with open(os.path.join(dataset_root, name+'.json'), 'r') as f:
         #     meta_data = json.load(f)
-        meta_data=ca()
+        json_path = os.path.join(dataset_root, name+'.json')
+        if os.path.exists(json_path):
+            with open(json_path, 'r') as f:
+                meta_data = json.load(f)
+        else:
+            meta_data = ca(dataset_root)
         # load videos
         pbar = tqdm(meta_data.keys(), desc='loading '+name, ncols=100)
         self.videos = {}

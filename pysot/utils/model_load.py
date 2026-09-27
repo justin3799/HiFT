@@ -48,7 +48,8 @@ def load_pretrain(model, pretrained_path):
     logger.info('load pretrained model from {}'.format(pretrained_path))
     device = torch.cuda.current_device()
     pretrained_dict = torch.load(pretrained_path,
-        map_location=lambda storage, loc: storage.cuda(device))
+        map_location=lambda storage, loc: storage.cuda(device),
+        weights_only=False)
     if "state_dict" in pretrained_dict.keys():
         pretrained_dict = remove_prefix(pretrained_dict['state_dict'],
                                         'module.')
@@ -73,7 +74,8 @@ def load_pretrain(model, pretrained_path):
 def restore_from(model, optimizer, ckpt_path):
     device = torch.cuda.current_device()
     ckpt = torch.load(ckpt_path,
-        map_location=lambda storage, loc: storage.cuda(device))
+        map_location=lambda storage, loc: storage.cuda(device),
+        weights_only=False)
     epoch = ckpt['epoch']
 
     ckpt_model_dict = remove_prefix(ckpt['state_dict'], 'module.')

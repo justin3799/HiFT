@@ -22,6 +22,8 @@ def main():
     parser = argparse.ArgumentParser(description='HiFT tracking')
     parser.add_argument('--dataset', default='DTB70',type=str,
             help='datasets')
+    parser.add_argument('--dataset_dir', default='../testing_dataset', type=str,
+            help='folder holding the dataset folders, relative to tools/')
     parser.add_argument('--config', default='./../experiments/config.yaml', type=str,
             help='config file')
     parser.add_argument('--snapshot', default='./snapshot/first.pth', type=str,
@@ -37,7 +39,7 @@ def main():
     cfg.merge_from_file(args.config)
 
     cur_dir = os.path.dirname(os.path.realpath(__file__))
-    dataset_root = os.path.join(cur_dir, '../test_dataset', args.dataset)
+    dataset_root = os.path.join(cur_dir, args.dataset_dir, args.dataset)
 
     model = ModelBuilder()
 

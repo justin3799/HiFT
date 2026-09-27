@@ -1,0 +1,86 @@
+# Quick debug run on short_train/ (built by tools/make_short_data.py).
+# Same model/loss settings as config.yaml; only data size, epochs and batch are reduced.
+# 320 samples/epoch / batch 16 = 20 iterations per epoch, 3 epochs.
+META_ARC: "HiFT_alexnet"
+
+BACKBONE:
+    TYPE: "alexnet"
+    PRETRAINED:  'alexnet-bn.pth'
+    TRAIN_LAYERS: ['layer3','layer4','layer5']
+    TRAIN_EPOCH: 2        # backbone unfrozen for the last epoch
+    LAYERS_LR: 0.1
+
+TRACK:
+    TYPE: 'HiFTtracker'
+    EXEMPLAR_SIZE: 127
+    INSTANCE_SIZE: 287
+    CONTEXT_AMOUNT: 0.5
+    STRIDE: 8
+    PENALTY_K: 0.08
+    WINDOW_INFLUENCE: 0.42
+    LR: 0.30
+    w2: 1.0
+    w3: 1.0
+
+TRAIN:
+    EPOCH: 3
+    START_EPOCH: 0
+    BATCH_SIZE: 16
+    NUM_GPU: 1
+    BASE_LR: 0.005
+    RESUME: ''
+    WEIGHT_DECAY : 0.0001
+    PRETRAINED: 0
+    OUTPUT_SIZE: 11
+    NUM_WORKERS: 4
+    LOC_WEIGHT: 2.4
+    CLS_WEIGHT: 1.0
+    w2: 1.0
+    w3: 1.0
+    w4: 1.0
+    w5: 1.0
+    PRINT_FREQ: 5
+    LOG_DIR: './logs_short'
+    SNAPSHOT_DIR: './snapshot_short'
+
+    POS_NUM : 16
+    TOTAL_NUM : 64
+    NEG_NUM : 16
+    LARGER: 1.0
+    range : 1.0
+    LR:
+        TYPE: 'log'
+        KWARGS:
+            start_lr: 0.01
+            end_lr: 0.0001
+
+    LR_WARMUP:
+        TYPE: 'step'
+        EPOCH: 1
+        KWARGS:
+            start_lr: 0.005
+            end_lr: 0.01
+            step: 1
+
+DATASET:
+    NAMES:
+    - 'SHORT'
+
+    VIDEOS_PER_EPOCH: 320
+
+    TEMPLATE:
+        SHIFT: 4
+        SCALE: 0.05
+        BLUR: 0.0
+        FLIP: 0.0
+        COLOR: 1.0
+
+    SEARCH:
+        SHIFT: 64
+        SCALE: 0.18
+        BLUR: 0.2
+        FLIP: 0.0
+        COLOR: 1.0
+
+    NEG: 0.05
+    GRAY: 0.0

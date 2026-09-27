@@ -9,8 +9,7 @@ from glob import glob
 from .dataset import Dataset
 from .video import Video
 
-def ca():
-    path='./test_dataset/UAV123_10fps'
+def ca(path):
     
     name_list=os.listdir(path+'/data_seq')
     name_list.sort()
@@ -86,7 +85,12 @@ class UAV10Dataset(Dataset):
     """
     def __init__(self, name, dataset_root, load_img=False):
         super(UAV10Dataset, self).__init__(name, dataset_root)
-        meta_data = ca()
+        json_path = os.path.join(dataset_root, name+'.json')
+        if os.path.exists(json_path):
+            with open(json_path, 'r') as f:
+                meta_data = json.load(f)
+        else:
+            meta_data = ca(dataset_root)
 
         # load videos
         pbar = tqdm(meta_data.keys(), desc='loading '+name, ncols=100)

@@ -201,7 +201,15 @@ def train(train_loader, model, optimizer, lr_scheduler, tb_writer):
                             average_meter.batch_time.avg,
                             cfg.TRAIN.EPOCH * num_per_epoch)
         end = time.time()
-        
+
+    # the loader runs out before the epoch == EPOCH branch above, so save the last epoch here
+    if get_rank() == 0:
+        torch.save(
+                {'epoch': cfg.TRAIN.EPOCH,
+                  'state_dict': model.module.state_dict(),
+                  'optimizer': optimizer.state_dict()},
+                cfg.TRAIN.SNAPSHOT_DIR+'/checkpoint00_e%d.pth' % (cfg.TRAIN.EPOCH))
+
 
 
 

@@ -158,29 +158,36 @@ __C.DATASET.GRAY = 0.0
 __C.DATASET.NAMES = ('VID', 'COCO', 'GOT', 'YOUTUBEBB')
 
 __C.DATASET.VID = CN()
-__C.DATASET.VID.ROOT = 'train_dataset/vid/crop511'
-__C.DATASET.VID.ANNO = 'train_dataset/vid/train.json'
+__C.DATASET.VID.ROOT = 'training_dataset/vid/crop511'
+__C.DATASET.VID.ANNO = 'training_dataset/vid/train.json'
 __C.DATASET.VID.FRAME_RANGE = 100
 __C.DATASET.VID.NUM_USE = 100000  # repeat until reach NUM_USE
 
 __C.DATASET.YOUTUBEBB = CN()
-__C.DATASET.YOUTUBEBB.ROOT = 'train_dataset/yt_bb/crop511'
-__C.DATASET.YOUTUBEBB.ANNO = 'train_dataset/yt_bb/train.json'
+__C.DATASET.YOUTUBEBB.ROOT = 'training_dataset/yt_bb/crop511'
+__C.DATASET.YOUTUBEBB.ANNO = 'training_dataset/yt_bb/train.json'
 __C.DATASET.YOUTUBEBB.FRAME_RANGE = 3
 __C.DATASET.YOUTUBEBB.NUM_USE = -1  # use all not repeat
 
 __C.DATASET.COCO = CN()
-__C.DATASET.COCO.ROOT = 'train_dataset/coco/crop511'
-__C.DATASET.COCO.ANNO = 'train_dataset/coco/train2017.json'
+__C.DATASET.COCO.ROOT = 'training_dataset/coco/crop511'
+__C.DATASET.COCO.ANNO = 'training_dataset/coco/train2017.json'
 __C.DATASET.COCO.FRAME_RANGE = 1
 __C.DATASET.COCO.NUM_USE = -1
 
 
 __C.DATASET.GOT = CN()
-__C.DATASET.GOT.ROOT = 'train_dataset/got10k/crop511'         # GOT dataset path
-__C.DATASET.GOT.ANNO = 'train_dataset/got10k/train.json'
+__C.DATASET.GOT.ROOT = 'training_dataset/got10k/crop511'         # GOT dataset path
+__C.DATASET.GOT.ANNO = 'training_dataset/got10k/train.json'
 __C.DATASET.GOT.FRAME_RANGE = 50
 __C.DATASET.GOT.NUM_USE = 100000
+
+# small UAV123-based set built by tools/make_short_data.py, for debugging
+__C.DATASET.SHORT = CN()
+__C.DATASET.SHORT.ROOT = 'short_train/crop511'
+__C.DATASET.SHORT.ANNO = 'short_train/train.json'
+__C.DATASET.SHORT.FRAME_RANGE = 50
+__C.DATASET.SHORT.NUM_USE = -1
 
 __C.DATASET.VIDEOS_PER_EPOCH = 600000
 
