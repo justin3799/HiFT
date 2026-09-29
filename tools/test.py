@@ -89,14 +89,14 @@ def main():
                         gt_bbox = list(map(int, gt_bbox))
                     except:
                         gt_bbox=[0,0,0,0]
-                        pred_bbox = list(map(int, pred_bbox))
-                        cv2.rectangle(img, (gt_bbox[0], gt_bbox[1]),
-                                    (gt_bbox[0]+gt_bbox[2], gt_bbox[1]+gt_bbox[3]), (0, 255, 0), 3)
-                        cv2.rectangle(img, (pred_bbox[0], pred_bbox[1]),
-                                    (pred_bbox[0]+pred_bbox[2], pred_bbox[1]+pred_bbox[3]), (0, 255, 255), 3)
-                        cv2.putText(img, str(idx), (40, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-                        cv2.imshow(video.name, img)
-                        cv2.waitKey(1)
+                    pred_bbox = list(map(int, pred_bbox))
+                    cv2.rectangle(img, (gt_bbox[0], gt_bbox[1]),
+                                (gt_bbox[0]+gt_bbox[2], gt_bbox[1]+gt_bbox[3]), (0, 255, 0), 3)
+                    cv2.rectangle(img, (pred_bbox[0], pred_bbox[1]),
+                                (pred_bbox[0]+pred_bbox[2], pred_bbox[1]+pred_bbox[3]), (0, 255, 255), 3)
+                    cv2.putText(img, str(idx), (40, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                    cv2.imshow(video.name, img)
+                    cv2.waitKey(1)
             toc /= cv2.getTickFrequency()
             # save results
         
