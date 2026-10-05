@@ -275,3 +275,97 @@ __C.TRACK.MASK_THERSHOLD = 0.30
 
 # Mask output size
 __C.TRACK.MASK_OUTPUT_SIZE = 127
+
+# ------------------------------------------------------------------------ #
+# Reinforcement learning options (tools/train_reinforce.py)
+# A policy sets the tracker's post-processing parameters every frame while
+# the HiFT network stays frozen.
+# ------------------------------------------------------------------------ #
+__C.RL = CN()
+
+# Frozen HiFT weights the policy is trained on top of
+__C.RL.SNAPSHOT = './snapshot/first.pth'
+
+# Dataset the training videos are drawn from
+__C.RL.DATASET = 'UAV123'
+
+__C.RL.DATASET_DIR = '../testing_dataset'
+
+# Cross-validation: videos are grouped by source video (car6_1..car6_5 -> car6)
+# and split into NUM_FOLDS folds; the policy trains on every fold except FOLD
+__C.RL.NUM_FOLDS = 2
+
+__C.RL.FOLD = 0
+
+# Fraction of the training videos kept aside to pick the best checkpoint
+__C.RL.VAL_FRACTION = 0.2
+
+__C.RL.SPLIT_SEED = 0
+
+# Action ranges: [window influence, penalty k, size lr, search scale]
+__C.RL.ACTION_LOW = [0.0, 0.0, 0.0, 0.8]
+
+__C.RL.ACTION_HIGH = [0.9, 0.3, 1.0, 2.0]
+
+# Parallel tracking episodes, each on its own video
+__C.RL.NUM_ENVS = 16
+
+# 'iou': reward is the frame's IoU with ground truth.
+# 'relative': IoU minus that of a hand-tuned HiFT tracker run alongside on the
+# same frames (paired counterfactual baseline; costs a second tracker per env)
+__C.RL.REWARD = 'iou'
+
+# Subtracted from the reward each frame, times the squared distance (unit
+# action space) between the action and the hand-tuned constants: the policy
+# only departs from them when that pays off
+__C.RL.DEVIATION_COEF = 0.0
+
+# Include the two 11x11 score maps in the state (else summary statistics only)
+__C.RL.OBS_MAPS = True
+
+# Validation: average over VAL_DRAWS runs with actions jittered by VAL_JITTER
+# (unit space, same for baseline and policy), and only save a checkpoint that
+# beats the best so far by VAL_MARGIN; the hand-tuned constants are the start
+__C.RL.VAL_DRAWS = 1
+
+__C.RL.VAL_JITTER = 0.0
+
+__C.RL.VAL_MARGIN = 0.0
+
+# Frames per episode (shorter if the video ends first)
+__C.RL.EPISODE_LEN = 300
+
+# Steps per env collected before each PPO update
+__C.RL.ROLLOUT_LEN = 128
+
+__C.RL.UPDATES = 300
+
+__C.RL.PPO_EPOCHS = 4
+
+__C.RL.MINIBATCH = 512
+
+__C.RL.LR = 3e-4
+
+__C.RL.GAMMA = 0.95
+
+__C.RL.GAE_LAMBDA = 0.95
+
+__C.RL.CLIP = 0.2
+
+__C.RL.VALUE_COEF = 0.5
+
+__C.RL.ENTROPY_COEF = 0.001
+
+__C.RL.GRAD_CLIP = 0.5
+
+# Initial std of the Gaussian policy (pre-squash)
+__C.RL.INIT_LOG_STD = -1.0
+
+__C.RL.HIDDEN = 256
+
+# Validate (and save the best checkpoint) every VAL_EVERY updates
+__C.RL.VAL_EVERY = 25
+
+__C.RL.LOG_DIR = './logs_rl'
+
+__C.RL.SNAPSHOT_DIR = './snapshot_rl'

@@ -14,6 +14,8 @@ import numpy as np
 from pysot.core.config import cfg
 from pysot.models.model_builder import ModelBuilder
 from pysot.tracker.hift_tracker import HiFTTracker
+from pysot.tracker.rl_tracker import RLTracker, load_policy
+from pysot.rl.core import ACTION_NAMES
 from pysot.utils.bbox import get_axis_aligned_bbox
 from pysot.utils.model_load import load_pretrain
 from toolkit.datasets import DatasetFactory
@@ -32,6 +34,12 @@ def main():
             help='eval one special video')
     parser.add_argument('--vis', default='',action='store_true',
             help='whether visualzie result')
+    parser.add_argument('--policy', default='', type=str,
+            help='RL policy from train_reinforce.py; plain HiFT otherwise')
+    parser.add_argument('--heldout', action='store_true',
+            help='with --policy: only the videos the policy never trained on')
+    parser.add_argument('--name', default='', type=str,
+            help='results folder name (default: from the snapshot)')
     args = parser.parse_args()
 
     torch.set_num_threads(1)
@@ -45,13 +53,20 @@ def main():
 
     model = load_pretrain(model, args.snapshot).cuda().eval()
 
-    tracker = HiFTTracker(model)
+    heldout = None
+    if args.policy:
+        policy, ckpt = load_policy(args.policy)
+        tracker = RLTracker(model, policy)
+        if args.heldout:
+            heldout = set(ckpt['test_videos'])
+    else:
+        tracker = HiFTTracker(model)
 
     dataset = DatasetFactory.create_dataset(name=args.dataset,
                                             dataset_root=dataset_root,
                                             load_img=False)
 
-    model_name = args.snapshot.split('/')[-1].split('.')[0]+str(cfg.TRACK.w1)
+    model_name = args.name or args.snapshot.split('/')[-1].split('.')[0]+str(cfg.TRACK.w1)
 
     for v_idx, video in enumerate(dataset):
 
@@ -59,6 +74,8 @@ def main():
                 # test one special video
                 if video.name != args.video:
                     continue
+            if heldout is not None and video.name not in heldout:
+                continue
             toc = 0
             pred_bboxes = []
             scores = []
@@ -107,6 +124,14 @@ def main():
             with open(result_path, 'w') as f:
                 for x in pred_bboxes:
                     f.write(','.join([str(i) for i in x])+'\n')
+            if args.policy:
+                # per-frame actions, for analysing what the policy does
+                action_dir = os.path.join(model_path, 'actions')
+                if not os.path.isdir(action_dir):
+                    os.makedirs(action_dir)
+                np.savetxt(os.path.join(action_dir, '{}.txt'.format(video.name)),
+                           np.array(tracker.actions), delimiter=',', fmt='%.5f',
+                           header=','.join(ACTION_NAMES))
             print('({:3d}) Video: {:12s} Time: {:5.1f}s Speed: {:3.1f}fps'.format(
                 v_idx+1, video.name, toc, idx / toc))
 

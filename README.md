@@ -69,6 +69,32 @@ Ziang Cao
 
 Email: [1753419@tongji.edu.cn](1753419@tongji.edu.cn)
 
+## Dissertation extension: learned post-processing (branch `dissertation`)
+
+This branch adds a reinforcement-learning policy that keeps the HiFT network frozen and sets four of its hand-tuned post-processing constants on every frame: the cosine-window influence, the scale penalty, the box-size update rate and the search-region scale. The policy is trained with PPO, rewarded by its IoU gain over an unmodified HiFT tracker run on the same frames, and evaluated with two-fold cross-validation on UAV123, split by source video so that no test video is seen in training.
+
+| Tracker (UAV123, held-out) | Success | Precision |
+|---|---|---|
+| HiFT, paper | 0.589 | 0.787 |
+| HiFT, reproduced | 0.592 | 0.789 |
+| HiFT + RL policy v1 (unconstrained) | 0.556 | 0.746 |
+| HiFT + RL policy v2 (conservative) | 0.592 | 0.793 |
+
+v1 is significantly worse than HiFT (−0.033 success averaged over three perturbation draws, p = 0.001); v2 is statistically indistinguishable from it (+0.004, 95% CI [−0.015, +0.023]). Single tracking runs turn out to be chaotic: a numerical difference of about 1e-3 can change one video's success from 0.65 to 0.16, and a deterministic run of HiFT scores about 0.013 above its average under such perturbations, so trackers are compared with `tools/eval_noise.py`, which averages several perturbed runs.
+
+New files: `tools/train_reinforce.py` (training), `pysot/rl/` (environment, policy, batched post-processing), `pysot/tracker/rl_tracker.py`, `tools/compare_trackers.py` (paired statistics) and `tools/eval_noise.py`, plus `experiments/config_rl*.yaml`. `tools/test.py` gains `--policy`, `--heldout` and `--name`.
+
+```
+cd tools
+python train_reinforce.py --cfg ../experiments/config_rl_v2.yaml --fold 0   # and --fold 1
+python test.py --dataset UAV123 --config ../experiments/config_rl_v2.yaml \
+    --policy snapshot_rl_v2/fold0/best.pth --heldout --name HiFT_RL_v2      # and fold1
+python compare_trackers.py --dataset UAV123 --base HiFT --new HiFT_RL_v2
+python eval_noise.py --config ../experiments/config_rl_v2.yaml --snapshot_dir snapshot_rl_v2
+```
+
+Note on batching: the encoder in `pysot/models/utile/tran.py` reshapes its `(tokens, batch, channels)` tensor with a `view` that mixes samples when the batch is larger than one. Single-video tracking is unaffected. The RL environment tracks 16 videos per batch and enables the opt-in `sample_independent` fix, which is bit-identical to the original at batch size one; `train.py` keeps the original behaviour.
+
 ## Qualitative Evaluation
 
 ![Compared with deeper trackers](https://github.com/vision4robotics/HiFT/blob/main/image/2.png)

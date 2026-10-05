@@ -20,3 +20,7 @@ tools/results/
 # papers / notes
 *.pdf
 tools/videos/
+
+# dissertation drafts and office lock files (repository is public)
+*.docx
+.~lock.*#

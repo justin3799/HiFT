@@ -214,6 +214,9 @@ class TransformerEncoderLayer(Module):
         self.self_attn = MultiheadAttention(d_model, nhead, dropout=dropout)
         channel=192
         self.cross_attn=Cattention(channel)
+        # False keeps the original behaviour (batch samples mix in forward, see
+        # below); batched tracking sets True to match single-video tracking
+        self.sample_independent = False
 
         # Implementation of Feedforward model
     
@@ -247,6 +250,12 @@ class TransformerEncoderLayer(Module):
         src = src + self.dropout1(src2)
         src = self.norm1(src)
         
+        if self.sample_independent:
+            # src is (tokens, batch, channels): the view below reads memory across
+            # the batch, so with batch > 1 each sample mixes with the others.
+            # Reshape each sample on its own; identical to the view at batch 1.
+            src = src.permute(1, 0, 2).contiguous()
+            srcc = srcc.permute(1, 0, 2).contiguous()
         src=self.cross_attn(src.view(b,c,int(s**0.5),int(s**0.5))\
                              ,srcc.contiguous().view(b,c,int(s**0.5),int(s**0.5))).view(b,c,-1).permute(2, 0, 1)
 

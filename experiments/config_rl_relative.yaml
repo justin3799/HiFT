@@ -1,0 +1,50 @@
+# RL post-processing policy on top of the frozen paper model (tools/train_reinforce.py),
+# rewarded by its IoU gain over the hand-tuned tracker on the same frames.
+# Tracker settings are the same as config.yaml; they define the baseline the
+# policy starts from and is compared against.
+META_ARC: "HiFT_alexnet"
+
+BACKBONE:
+    TYPE: "alexnet"
+
+TRACK:
+    TYPE: 'HiFTtracker'
+    EXEMPLAR_SIZE: 127
+    INSTANCE_SIZE: 287
+    CONTEXT_AMOUNT: 0.5
+    STRIDE: 8
+    PENALTY_K: 0.08
+    WINDOW_INFLUENCE: 0.42
+    LR: 0.30
+    w2: 1.0
+    w3: 1.0
+
+TRAIN:
+    OUTPUT_SIZE: 11
+    PRINT_FREQ: 5
+
+RL:
+    SNAPSHOT: './snapshot/first.pth'
+    DATASET: 'UAV123'
+    DATASET_DIR: '../testing_dataset'
+    NUM_FOLDS: 2
+    VAL_FRACTION: 0.2
+    # [window influence, penalty k, size lr, search scale]
+    ACTION_LOW: [0.0, 0.0, 0.0, 0.8]
+    ACTION_HIGH: [0.9, 0.3, 1.0, 2.0]
+    NUM_ENVS: 16
+    EPISODE_LEN: 300
+    ROLLOUT_LEN: 128
+    UPDATES: 300
+    PPO_EPOCHS: 4
+    MINIBATCH: 512
+    LR: 0.0003
+    GAMMA: 0.95
+    GAE_LAMBDA: 0.95
+    ENTROPY_COEF: 0.001
+    INIT_LOG_STD: -1.0
+    HIDDEN: 256
+    REWARD: 'relative'
+    VAL_EVERY: 25
+    LOG_DIR: './logs_rl_relative'
+    SNAPSHOT_DIR: './snapshot_rl_relative'
