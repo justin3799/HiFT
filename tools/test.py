@@ -15,6 +15,7 @@ from pysot.core.config import cfg
 from pysot.models.model_builder import ModelBuilder
 from pysot.tracker.hift_tracker import HiFTTracker
 from pysot.tracker.rl_tracker import RLTracker, load_policy
+from pysot.rl import backends
 from pysot.rl.core import ACTION_NAMES
 from pysot.utils.bbox import get_axis_aligned_bbox
 from pysot.utils.model_load import load_pretrain
@@ -49,17 +50,17 @@ def main():
     cur_dir = os.path.dirname(os.path.realpath(__file__))
     dataset_root = os.path.join(cur_dir, args.dataset_dir, args.dataset)
 
-    model = ModelBuilder()
-
-    model = load_pretrain(model, args.snapshot).cuda().eval()
-
     heldout = None
     if args.policy:
+        # the frozen network named by RL.TRACKER in --config
+        model = backends.build_model(args.snapshot)
         policy, ckpt = load_policy(args.policy)
         tracker = RLTracker(model, policy)
         if args.heldout:
             heldout = set(ckpt['test_videos'])
     else:
+        model = ModelBuilder()
+        model = load_pretrain(model, args.snapshot).cuda().eval()
         tracker = HiFTTracker(model)
 
     dataset = DatasetFactory.create_dataset(name=args.dataset,

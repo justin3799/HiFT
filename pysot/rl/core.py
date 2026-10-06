@@ -58,8 +58,10 @@ def search_region(size, scaleaa, img_hw, scale_factor):
     """
     ctx = cfg.TRACK.CONTEXT_AMOUNT * size.sum(1)
     s_z = np.sqrt((size[:, 0] + ctx) * (size[:, 1] + ctx))
-    big = size[:, 0] * size[:, 1] > 0.5 * img_hw[:, 0] * img_hw[:, 1]
-    s_z = np.where(big, scaleaa, s_z)
+    if cfg.RL.TRACKER == 'HiFT':
+        # HiFT keeps the first frame's crop size once the target fills half the image
+        big = size[:, 0] * size[:, 1] > 0.5 * img_hw[:, 0] * img_hw[:, 1]
+        s_z = np.where(big, scaleaa, s_z)
     scale_z = cfg.TRAIN.EXEMPLAR_SIZE / s_z
     s_x = s_z * (cfg.TRACK.INSTANCE_SIZE / cfg.TRACK.EXEMPLAR_SIZE) * scale_factor
     return np.round(s_x), scale_z / scale_factor
@@ -70,10 +72,46 @@ def decode(outputs):
 
     Returns numpy arrays:
         pred     (B,4,N) [cx, cy, w, h] in crop pixels, relative to the crop centre
-        score    (B,N)   fused score HiFTTracker ranks candidates by
-        cls_prob (B,N)   softmax of cls1 (inside-box probability)
-        ctr_prob (B,N)   sigmoid of cls2 (centre closeness)
+        score    (B,N)   fused score the tracker ranks candidates by
+        cls_prob (B,N)   inside-box probability
+        ctr_prob (B,N)   centre-closeness probability
     """
+    if cfg.RL.TRACKER == 'SiamAPN++':
+        return _decode_apn(outputs)
+    return _decode_hift(outputs)
+
+
+def _decode_apn(outputs):
+    """As ADSiamAPNTracker.track: anchors from the anchor proposal network,
+    refined by the regression head; score from three classifiers."""
+    anchors, loc = outputs['anchors'], outputs['loc']
+    b, _, size, _ = loc.shape
+    stride = cfg.ANCHOR.STRIDE
+    grid = stride * np.arange(size) - stride * (size - 1) / 2
+    shap = (anchors * (cfg.TRAIN.SEARCH_SIZE // 4)).cpu().numpy()
+    aw = shap[:, 0] + shap[:, 1]
+    ah = shap[:, 2] + shap[:, 3]
+    ax = grid[None, None, :] - shap[:, 0] + aw / 2
+    ay = grid[None, :, None] - shap[:, 2] + ah / 2
+    aw, ah, ax, ay = [a.reshape(b, -1) for a in (aw, ah, ax, ay)]
+    d = loc.reshape(b, 4, -1).cpu().numpy()
+    # the reference writes each row back into a float32 array
+    pred = np.stack([(d[:, 0] * aw + ax).astype(np.float32),
+                     (d[:, 1] * ah + ay).astype(np.float32),
+                     (np.exp(d[:, 2]) * aw).astype(np.float32),
+                     (np.exp(d[:, 3]) * ah).astype(np.float32)], 1).astype(np.float64)
+
+    p1 = F.softmax(outputs['cls1'], dim=1)[:, 1].reshape(b, -1)
+    p2 = F.softmax(outputs['cls2'], dim=1)[:, 1].reshape(b, -1)
+    ctr_logit = outputs['cls3'].reshape(b, -1)
+    score = (p1 * cfg.TRACK.w1 + p2 * cfg.TRACK.w2 + ctr_logit * cfg.TRACK.w3) / 3
+    return (pred,
+            score.cpu().numpy().astype(np.float64),
+            ((p1 + p2) / 2).cpu().numpy(),
+            torch.sigmoid(ctr_logit).cpu().numpy())
+
+
+def _decode_hift(outputs):
     loc = outputs['loc']
     b, _, size, _ = loc.shape
     half = cfg.TRAIN.SEARCH_SIZE // 2

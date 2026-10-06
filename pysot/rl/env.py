@@ -16,7 +16,7 @@ import torch
 
 from pysot.core.config import cfg
 from pysot.models.utile.tran import TransformerEncoderLayer
-from pysot.rl import core
+from pysot.rl import backends, core
 from pysot.utils.bbox import get_axis_aligned_bbox
 from toolkit.utils.statistics import overlap_ratio, success_overlap, success_error
 
@@ -161,7 +161,9 @@ class TrackingEnv(object):
         k = self.k
         self.video = [None] * k
         self.t = np.zeros(k, dtype=np.int64)
+        self.start = np.zeros(k, dtype=np.int64)
         self.end = np.zeros(k, dtype=np.int64)
+        self.gate_left = np.zeros(k, dtype=np.int64)
         self.center = np.zeros((k, 2))
         self.size = np.zeros((k, 2))
         self.ch_avg = np.zeros((k, 3))
@@ -198,7 +200,8 @@ class TrackingEnv(object):
         cx, cy, w, h = get_axis_aligned_bbox(v['gt'][s])
         box0 = [cx - (w - 1) / 2, cy - (h - 1) / 2, w, h]
         self.video[i] = vi
-        self.t[i], self.end[i] = s + 1, e
+        self.t[i], self.start[i], self.end[i] = s + 1, s, e
+        self.gate_left[i] = 0
         self.center[i] = [box0[0] + (w - 1) / 2, box0[1] + (h - 1) / 2]
         self.size[i] = [w, h]
         self.img_hw[i] = img.shape[:2]
@@ -230,8 +233,7 @@ class TrackingEnv(object):
                 crops.append(self._init_slot(slot, vi, s, e, img))
                 started.append(slot)
         if started:
-            with torch.no_grad():
-                zf = self.model.backbone(to_batch(crops))
+            zf = backends.template(self.model, to_batch(crops))
             if self.zf is None:
                 self.zf = [z.new_zeros((self.k,) + z.shape[1:]) for z in zf]
             for dst, src in zip(self.zf, zf):
@@ -253,19 +255,28 @@ class TrackingEnv(object):
             return crop_patch(img, self.center[i], cfg.TRACK.INSTANCE_SIZE,
                               s_x[j], self.ch_avg[i])
         x = to_batch(list(self.pool.map(crop, range(len(ids)))))
-        with torch.no_grad():
-            xf = self.model.backbone(x)
-            zf = self.zf if len(ids) == self.k else [z[torch.from_numpy(ids).cuda()]
-                                                     for z in self.zf]
-            loc, cls1, cls2 = self.model.grader(xf, zf)
-        pred, score, cls_prob, ctr_prob = core.decode({'loc': loc, 'cls1': cls1, 'cls2': cls2})
+        zf = self.zf if len(ids) == self.k else [z[torch.from_numpy(ids).cuda()]
+                                                 for z in self.zf]
+        pred, score, cls_prob, ctr_prob = core.decode(backends.track(self.model, x, zf))
         size_crop = self.size[ids] * scale[:, None]
         obs = core.make_obs(pred, score, cls_prob, ctr_prob, size_crop, self.factor[ids],
                             self.size[ids], self.img_hw[ids], self.prev_a01[ids],
                             self.ema[ids], self.prev_max[ids])
+        gated = np.ones(len(ids), dtype=bool)
+        if cfg.RL.GATE_DROP:
+            ema = self.ema[ids]
+            trigger = (ema > 0) & (score.max(1) < cfg.RL.GATE_DROP * ema)
+            self.gate_left[ids] = np.where(trigger, cfg.RL.GATE_HOLD, self.gate_left[ids])
+            gated = self.gate_left[ids] > 0
         self.cache = {'ids': ids, 'pred': pred, 'score': score, 'scale': scale,
-                      'size_crop': size_crop}
+                      'size_crop': size_crop, 'gated': gated}
         return obs[ids < self.n]
+
+    def gated(self):
+        """Whether the policy's action is used on the current frame, per active
+        policy tracker (always true without RL.GATE_DROP)."""
+        c = self.cache
+        return c['gated'][c['ids'] < self.n]
 
     # ---------------------------------------------------------------- API
     def reset(self):
@@ -287,6 +298,8 @@ class TrackingEnv(object):
         c = self.cache
         ids = c['ids']
         policy = ids < self.n
+        base01 = core.to_unit(core.baseline_action())
+        a01 = np.where(c['gated'][policy][:, None], a01, base01)
         if self.paired:
             a01 = np.concatenate([a01, np.tile(core.to_unit(core.baseline_action()),
                                                (int((~policy).sum()), 1))])
@@ -310,10 +323,18 @@ class TrackingEnv(object):
         self.prev_a01[ids] = a01
         self.prev_max[ids] = best
         self.ema[ids] = np.where(self.ema[ids] == 0, best, 0.9 * self.ema[ids] + 0.1 * best)
+        self.gate_left[ids] = np.maximum(self.gate_left[ids] - 1, 0)
         for j, i in enumerate(ids):
             self.boxes[i].append(out_box[j].tolist())
             self.actions[i].append(action[j].tolist())
         done = self.t[ids] >= self.end[ids]
+        if self.paired and cfg.RL.SHADOW_SYNC:
+            # restart each shadow from its policy tracker's current state
+            for i in ids[policy]:
+                if (self.t[i] - self.start[i]) % cfg.RL.SHADOW_SYNC == 0:
+                    s = i + self.n
+                    self.center[s], self.size[s] = self.center[i], self.size[i]
+                    self.factor[s] = 1.0
         finished = []
         for j, i in enumerate(ids):
             if done[j]:

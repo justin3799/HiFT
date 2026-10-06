@@ -283,13 +283,26 @@ __C.TRACK.MASK_OUTPUT_SIZE = 127
 # ------------------------------------------------------------------------ #
 __C.RL = CN()
 
-# Frozen HiFT weights the policy is trained on top of
+# Frozen tracker the policy is trained on top of: 'HiFT' or 'SiamAPN++'
+__C.RL.TRACKER = 'HiFT'
+
+# Its weights
 __C.RL.SNAPSHOT = './snapshot/first.pth'
 
 # Dataset the training videos are drawn from
 __C.RL.DATASET = 'UAV123'
 
 __C.RL.DATASET_DIR = '../testing_dataset'
+
+# Separate training / validation sets inside RL.DATASET (e.g. GOT-10k's
+# 'GOT10k_train.json' / 'GOT10k_val.json' from tools/gen_got10k_json.py);
+# empty: cross-validation folds of RL.DATASET as below
+__C.RL.TRAIN_JSON = ''
+
+__C.RL.VAL_JSON = ''
+
+# Validate on this many randomly chosen validation videos (0: all)
+__C.RL.VAL_VIDEOS = 0
 
 # Cross-validation: videos are grouped by source video (car6_1..car6_5 -> car6)
 # and split into NUM_FOLDS folds; the policy trains on every fold except FOLD
@@ -319,6 +332,18 @@ __C.RL.REWARD = 'iou'
 # action space) between the action and the hand-tuned constants: the policy
 # only departs from them when that pays off
 __C.RL.DEVIATION_COEF = 0.0
+
+# Paired reward: every SHADOW_SYNC frames, reset the shadow tracker to the
+# policy tracker's state, so the reward measures the local effect of recent
+# decisions rather than a long, chaotic divergence (0: never)
+__C.RL.SHADOW_SYNC = 0
+
+# Event-triggered control: the policy acts only after the peak score falls
+# below GATE_DROP times its running average, for GATE_HOLD frames; elsewhere
+# the hand-tuned constants are used (0: act on every frame)
+__C.RL.GATE_DROP = 0.0
+
+__C.RL.GATE_HOLD = 30
 
 # Include the two 11x11 score maps in the state (else summary statistics only)
 __C.RL.OBS_MAPS = True

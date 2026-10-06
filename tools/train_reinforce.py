@@ -28,12 +28,10 @@ import torch
 from tensorboardX import SummaryWriter
 
 from pysot.core.config import cfg
-from pysot.models.model_builder import ModelBuilder
-from pysot.rl import core
+from pysot.rl import backends, core
 from pysot.rl.env import TrackingEnv, evaluate, load_videos, split_folds, split_train_val
 from pysot.rl.policy import ActorCritic
 from pysot.utils.log_helper import init_log, add_file_handler
-from pysot.utils.model_load import load_pretrain
 
 logger = logging.getLogger('global')
 parser = argparse.ArgumentParser(description='HiFT reinforcement learning')
@@ -47,6 +45,8 @@ parser.add_argument('--dataset_dir', type=str, default=None,
                     help='folder holding the dataset folder (overrides RL.DATASET_DIR)')
 parser.add_argument('--seed', type=int, default=123456,
                     help='random seed')
+parser.add_argument('--run', type=str, default='',
+                    help='suffix for the log and snapshot folders, e.g. seed2')
 args = parser.parse_args()
 
 
@@ -61,6 +61,18 @@ def seed_torch(seed=0):
 def build_data():
     root = os.path.join(os.path.dirname(os.path.realpath(__file__)),
                         cfg.RL.DATASET_DIR, cfg.RL.DATASET)
+    if cfg.RL.TRAIN_JSON:
+        # separate training and validation sets (e.g. GOT-10k train / val);
+        # the test benchmark is evaluated on its own with test.py / eval_noise.py
+        train = load_videos(root, cfg.RL.TRAIN_JSON)
+        val = load_videos(root, cfg.RL.VAL_JSON)
+        if cfg.RL.VAL_VIDEOS:
+            val = [val[i] for i in np.random.RandomState(cfg.RL.SPLIT_SEED).permutation(
+                len(val))[:cfg.RL.VAL_VIDEOS]]
+        for name, vids in [('train', train), ('val', val)]:
+            logger.info('{}: {} videos, {} frames'.format(
+                name, len(vids), sum(len(v['frames']) for v in vids)))
+        return train, val, []
     videos = load_videos(root, cfg.RL.DATASET + '.json')
     folds = split_folds(videos, cfg.RL.NUM_FOLDS, cfg.RL.SPLIT_SEED)
     test = folds[cfg.RL.FOLD]
@@ -73,11 +85,7 @@ def build_data():
 
 
 def build_model():
-    model = ModelBuilder()
-    model = load_pretrain(model, cfg.RL.SNAPSHOT).cuda().eval()
-    for p in model.parameters():
-        p.requires_grad = False
-    return model
+    return backends.build_model(cfg.RL.SNAPSHOT)
 
 
 def validate(model, policy, videos, fixed_action=None):
@@ -118,9 +126,15 @@ def save(policy, optimizer, update, val_auc, splits, path):
                 'cfg': cfg.dump()}, path)
 
 
-def ppo_update(policy, optimizer, batch):
+def ppo_update(policy, optimizer, batch, mask=None):
+    """mask (RL.GATE_DROP): 1 where the policy's action was used; only those
+    samples train the policy, while the value function learns from all."""
     obs, u, logp_old, adv, ret = batch
-    adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+    if mask is None:
+        adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+    else:
+        sel = adv[mask > 0]
+        adv = (adv - sel.mean()) / (sel.std() + 1e-8) if len(sel) > 1 else adv
     n = len(obs)
     stats = {'pi_loss': 0., 'v_loss': 0., 'entropy': 0., 'kl': 0., 'clipfrac': 0.}
     steps = 0
@@ -130,10 +144,16 @@ def ppo_update(policy, optimizer, batch):
             mb = perm[s:s + cfg.RL.MINIBATCH]
             logp, ent, v = policy.evaluate(obs[mb], u[mb])
             ratio = (logp - logp_old[mb]).exp()
-            pi_loss = -torch.min(ratio * adv[mb],
-                                 ratio.clamp(1 - cfg.RL.CLIP, 1 + cfg.RL.CLIP) * adv[mb]).mean()
+            surrogate = torch.min(ratio * adv[mb],
+                                  ratio.clamp(1 - cfg.RL.CLIP, 1 + cfg.RL.CLIP) * adv[mb])
+            if mask is None:
+                pi_loss, ent_mean = -surrogate.mean(), ent.mean()
+            else:
+                m = mask[mb]
+                count = m.sum().clamp(min=1)
+                pi_loss, ent_mean = -(surrogate * m).sum() / count, (ent * m).sum() / count
             v_loss = ((v - ret[mb]) ** 2).mean()
-            loss = pi_loss + cfg.RL.VALUE_COEF * v_loss - cfg.RL.ENTROPY_COEF * ent.mean()
+            loss = pi_loss + cfg.RL.VALUE_COEF * v_loss - cfg.RL.ENTROPY_COEF * ent_mean
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(policy.parameters(), cfg.RL.GRAD_CLIP)
@@ -141,7 +161,7 @@ def ppo_update(policy, optimizer, batch):
             with torch.no_grad():
                 stats['pi_loss'] += pi_loss.item()
                 stats['v_loss'] += v_loss.item()
-                stats['entropy'] += ent.mean().item()
+                stats['entropy'] += ent_mean.item()
                 stats['kl'] += (logp_old[mb] - logp).mean().item()
                 stats['clipfrac'] += ((ratio - 1).abs() > cfg.RL.CLIP).float().mean().item()
             steps += 1
@@ -171,6 +191,7 @@ def train(model, policy, optimizer, splits, tb_writer):
         b_v = torch.zeros(T, K, device='cuda')
         b_r = torch.zeros(T, K, device='cuda')
         b_done = torch.zeros(T, K, device='cuda')
+        b_mask = torch.ones(T, K, device='cuda')
         raw_obs = []
         policy.eval()
         for t in range(T):
@@ -178,6 +199,7 @@ def train(model, policy, optimizer, splits, tb_writer):
             raw_obs.append(o)
             x = policy.norm(o)
             u, logp, v = policy.act(x, normed=True)
+            b_mask[t] = torch.as_tensor(env.gated(), dtype=torch.float32, device='cuda')
             obs, r, done, _ = env.step(ActorCritic.squash(u).cpu().numpy().astype(np.float64))
             r = torch.as_tensor(r, dtype=torch.float32, device='cuda')
             d = torch.as_tensor(done, dtype=torch.float32, device='cuda')
@@ -201,7 +223,9 @@ def train(model, policy, optimizer, splits, tb_writer):
         policy.train()
         stats = ppo_update(policy, optimizer,
                            (b_obs.view(T * K, D), b_u.view(T * K, -1), b_logp.view(-1),
-                            adv.view(-1), ret.view(-1)))
+                            adv.view(-1), ret.view(-1)),
+                           mask=b_mask.view(-1) if cfg.RL.GATE_DROP else None)
+        stats['gated'] = b_mask.mean().item()
         policy.norm.update(torch.cat(raw_obs))
 
         acts = core.from_unit(ActorCritic.squash(b_u).view(-1, len(core.ACTION_NAMES))
@@ -214,10 +238,10 @@ def train(model, policy, optimizer, splits, tb_writer):
             tb_writer.add_scalar('action/' + name, acts[:, i].mean(), update)
         if update % cfg.TRAIN.PRINT_FREQ == 0 or update == 1:
             logger.info('update {}/{}  reward {:.4f}  kl {:.4f}  clip {:.3f}  v_loss {:.4f}  '
-                        'std {}  {:.0f} frames/s'.format(
+                        'std {}  gated {:.2f}  {:.0f} frames/s'.format(
                             update, cfg.RL.UPDATES, mean_reward, stats['kl'], stats['clipfrac'],
                             stats['v_loss'], np.round(policy.log_std.exp().tolist(), 3),
-                            T * K / rollout_time))
+                            stats['gated'], T * K / rollout_time))
             logger.info('  actions mean ' + '  '.join(
                 '{} {:.3f}'.format(n, acts[:, i].mean()) for i, n in enumerate(core.ACTION_NAMES)))
 
@@ -244,8 +268,12 @@ def main():
         cfg.RL.UPDATES = args.updates
     if args.dataset_dir is not None:
         cfg.RL.DATASET_DIR = args.dataset_dir
-    cfg.RL.SNAPSHOT_DIR = os.path.join(cfg.RL.SNAPSHOT_DIR, 'fold%d' % cfg.RL.FOLD)
-    cfg.RL.LOG_DIR = os.path.join(cfg.RL.LOG_DIR, 'fold%d' % cfg.RL.FOLD)
+    if args.run:
+        cfg.RL.SNAPSHOT_DIR = cfg.RL.SNAPSHOT_DIR + '_' + args.run
+        cfg.RL.LOG_DIR = cfg.RL.LOG_DIR + '_' + args.run
+    if not cfg.RL.TRAIN_JSON:
+        cfg.RL.SNAPSHOT_DIR = os.path.join(cfg.RL.SNAPSHOT_DIR, 'fold%d' % cfg.RL.FOLD)
+        cfg.RL.LOG_DIR = os.path.join(cfg.RL.LOG_DIR, 'fold%d' % cfg.RL.FOLD)
     for d in [cfg.RL.SNAPSHOT_DIR, cfg.RL.LOG_DIR]:
         if not os.path.exists(d):
             os.makedirs(d)
