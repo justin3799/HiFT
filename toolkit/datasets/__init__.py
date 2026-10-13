@@ -23,6 +23,9 @@ class DatasetFactory(object):
             dataset = UAV20Dataset(**kwargs)
         elif 'UAV123' in name:
             dataset = UAVDataset(**kwargs)
+        elif 'VisDrone' in name:
+            # tools/gen_visdrone_json.py writes the same json layout as UAV123
+            dataset = UAVDataset(**kwargs)
         else:
             raise Exception("unknow dataset {}".format(kwargs['name']))
         return dataset

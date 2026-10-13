@@ -50,6 +50,8 @@ if __name__ == '__main__':
         dataset = DTBDataset(args.dataset, root)
     elif 'UAV123' in args.dataset:
         dataset = UAVDataset(args.dataset, root)
+    elif 'VisDrone' in args.dataset:
+        dataset = UAVDataset(args.dataset, root)
     else:
         print('dataset error')
         sys.exit(1)

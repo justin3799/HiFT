@@ -34,7 +34,7 @@ from compare_trackers import bootstrap_ci, sign_flip_p  # noqa: E402
 def main():
     parser = argparse.ArgumentParser(description='noise-averaged held-out comparison')
     parser.add_argument('--config', required=True, type=str)
-    parser.add_argument('--snapshot_dir', required=True, type=str,
+    parser.add_argument('--snapshot_dir', default='', type=str,
                         help='holds fold<k>/best.pth for every fold, or best.pth '
                              'with --test_dataset')
     parser.add_argument('--dataset_dir', default=None, type=str,
@@ -46,6 +46,9 @@ def main():
     parser.add_argument('--sigma', default=0.01, type=float,
                         help='action jitter, unit action space')
     parser.add_argument('--json', default='', type=str, help='write per-video scores here')
+    parser.add_argument('--action', default='', type=str,
+                        help='with --test_dataset: compare a fixed action (four comma-separated '
+                             'values, e.g. the best of bo_search.py) with the constants instead of a policy')
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
@@ -54,7 +57,11 @@ def main():
     root = os.path.join(here, args.dataset_dir or cfg.RL.DATASET_DIR, dataset)
     videos = load_videos(root, dataset + '.json')
     model = backends.build_model(os.path.join(here, cfg.RL.SNAPSHOT))
-    if args.test_dataset:
+    if args.action:
+        assert args.test_dataset, '--action needs --test_dataset'
+        fixed01 = core.to_unit(np.array([float(x) for x in args.action.split(',')]))
+        groups = [('all', None, None)]
+    elif args.test_dataset:
         groups = [('all', os.path.join(args.snapshot_dir, 'best.pth'), None)]
     else:
         groups = [(fold, os.path.join(args.snapshot_dir, 'fold%d' % fold, 'best.pth'), 'heldout')
@@ -63,12 +70,15 @@ def main():
 
     # result keys: 'HiFT' = the tracker's own constants, 'HiFT_RL' = the policy
     # (names kept from the first experiments so earlier JSON files stay readable)
-    label = {'HiFT': 'constants', 'HiFT_RL': 'policy'}
+    label = {'HiFT': 'constants', 'HiFT_RL': 'fixed' if args.action else 'policy'}
     print('tracker: {}'.format(cfg.RL.TRACKER))
     scores = {'HiFT': {}, 'HiFT_RL': {}}
     folds = {}
     for fold, path, which in groups:
-        policy, ckpt = load_policy(path)
+        if args.action:
+            policy, ckpt = None, {'update': 'fixed action {}'.format(args.action)}
+        else:
+            policy, ckpt = load_policy(path)
         if which == 'heldout':
             held_out = set(ckpt['test_videos'])
             test = [v for v in videos if v['name'] in held_out]
@@ -84,6 +94,8 @@ def main():
                 def act(obs):
                     if tracker == 'HiFT':
                         a01 = np.tile(a01_base, (len(obs), 1))
+                    elif args.action:
+                        a01 = np.tile(fixed01, (len(obs), 1))
                     else:
                         u, _, _ = policy.act(torch.from_numpy(obs).cuda(), deterministic=True)
                         a01 = ActorCritic.squash(u).cpu().numpy().astype(np.float64)

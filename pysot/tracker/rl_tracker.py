@@ -17,7 +17,7 @@ from pysot.tracker.hift_tracker import HiFTTracker
 def load_policy(path):
     """Load a train_reinforce.py checkpoint; returns (policy, checkpoint dict)."""
     ckpt = torch.load(path, map_location='cuda', weights_only=False)
-    policy = ActorCritic(core.obs_dim(), core.to_unit(core.baseline_action()),
+    policy = ActorCritic(core.obs_dim(), core.to_unit(core.start_action()),
                          hidden=ckpt['hidden']).cuda()
     policy.load_state_dict(ckpt['state_dict'])
     policy.eval()
@@ -45,7 +45,7 @@ class RLTracker(HiFTTracker):
         self.zf = backends.template(self.model, z_crop)
         self.gate_left = 0
         self.factor = 1.0
-        self.prev_a01 = core.to_unit(core.baseline_action())
+        self.prev_a01 = core.to_unit(core.start_action())
         self.ema = 0.
         self.prev_max = 0.
         self.actions = []

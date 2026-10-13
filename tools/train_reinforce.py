@@ -64,8 +64,16 @@ def build_data():
     if cfg.RL.TRAIN_JSON:
         # separate training and validation sets (e.g. GOT-10k train / val);
         # the test benchmark is evaluated on its own with test.py / eval_noise.py
-        train = load_videos(root, cfg.RL.TRAIN_JSON)
-        val = load_videos(root, cfg.RL.VAL_JSON)
+        def load(json_name):
+            # a bare name is in the dataset folder; a path (e.g. 'VisDrone2019-SOT-val/
+            # VisDrone2019-SOT-val.json') is relative to RL.DATASET_DIR, so the
+            # validation videos can come from another dataset
+            if '/' in json_name:
+                path = os.path.join(os.path.dirname(root), json_name)
+                return load_videos(os.path.dirname(path), os.path.basename(path))
+            return load_videos(root, json_name)
+        train = load(cfg.RL.TRAIN_JSON)
+        val = load(cfg.RL.VAL_JSON)
         if cfg.RL.VAL_VIDEOS:
             val = [val[i] for i in np.random.RandomState(cfg.RL.SPLIT_SEED).permutation(
                 len(val))[:cfg.RL.VAL_VIDEOS]]
@@ -176,8 +184,10 @@ def train(model, policy, optimizer, splits, tb_writer):
     gamma, lam = cfg.RL.GAMMA, cfg.RL.GAE_LAMBDA
     D = core.obs_dim()
 
-    auc, prec, _ = validate(model, policy, val_videos, core.baseline_action())
-    logger.info('val baseline (hand-tuned constants): AUC {:.4f} prec {:.4f}'.format(auc, prec))
+    auc, prec, _ = validate(model, policy, val_videos, core.start_action())
+    logger.info('val baseline ({}): AUC {:.4f} prec {:.4f}'.format(
+        'start action {}'.format(np.round(core.start_action(), 3)) if len(cfg.RL.INIT_ACTION)
+        else 'hand-tuned constants', auc, prec))
     tb_writer.add_scalar('val/baseline_auc', auc, 0)
     best_auc = auc
     save(policy, optimizer, 0, auc, splits, os.path.join(cfg.RL.SNAPSHOT_DIR, 'best.pth'))
@@ -283,7 +293,7 @@ def main():
 
     splits = build_data()
     model = build_model()
-    policy = ActorCritic(core.obs_dim(), core.to_unit(core.baseline_action()),
+    policy = ActorCritic(core.obs_dim(), core.to_unit(core.start_action()),
                          hidden=cfg.RL.HIDDEN, init_log_std=cfg.RL.INIT_LOG_STD).cuda()
     optimizer = torch.optim.Adam(policy.parameters(), lr=cfg.RL.LR)
     tb_writer = SummaryWriter(cfg.RL.LOG_DIR)

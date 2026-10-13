@@ -333,6 +333,13 @@ __C.RL.REWARD = 'iou'
 # only departs from them when that pays off
 __C.RL.DEVIATION_COEF = 0.0
 
+# Action the policy starts from, in unit action space ([0, 1] per dimension).
+# Empty: the tracker's hand-tuned constants. Set (e.g. drawn at random) to
+# train without any knowledge of the constants: it then also replaces them as
+# the shadow tracker in the relative reward, the anchor of the deviation cost,
+# the first observed previous action, and the bar for model selection.
+__C.RL.INIT_ACTION = []
+
 # Paired reward: every SHADOW_SYNC frames, reset the shadow tracker to the
 # policy tracker's state, so the reward measures the local effect of recent
 # decisions rather than a long, chaotic divergence (0: never)

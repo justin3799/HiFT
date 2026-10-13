@@ -24,3 +24,10 @@ tools/videos/
 # dissertation drafts and office lock files (repository is public)
 *.docx
 .~lock.*#
+
+# working notes and run output kept out of the public repository
+DISSERTATION_STATUS.md
+tools/aborted_scratch_*/
+tools/bo_*_gp/
+failure_recovery/results/
+failure_recovery/draft/

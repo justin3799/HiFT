@@ -31,6 +31,14 @@ def baseline_action():
                      cfg.TRACK.LR, 1.0], dtype=np.float64)
 
 
+def start_action():
+    """The action the policy starts from: RL.INIT_ACTION (unit space) when
+    set, otherwise the hand-tuned constants."""
+    if len(cfg.RL.INIT_ACTION):
+        return from_unit(np.array(cfg.RL.INIT_ACTION, dtype=np.float64))
+    return baseline_action()
+
+
 def to_unit(action):
     low, high = action_bounds()
     return (action - low) / (high - low)

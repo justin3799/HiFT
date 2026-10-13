@@ -170,7 +170,7 @@ class TrackingEnv(object):
         self.scaleaa = np.zeros(k)
         self.img_hw = np.ones((k, 2))
         self.factor = np.ones(k)
-        self.prev_a01 = np.tile(core.to_unit(core.baseline_action()), (k, 1))
+        self.prev_a01 = np.tile(core.to_unit(core.start_action()), (k, 1))
         self.ema = np.zeros(k)
         self.prev_max = np.zeros(k)
         self.boxes = [None] * k
@@ -210,7 +210,7 @@ class TrackingEnv(object):
         s_z = round(np.sqrt((w + ctx) * (h + ctx)))
         self.scaleaa[i] = s_z
         self.factor[i] = 1.0
-        self.prev_a01[i] = core.to_unit(core.baseline_action())
+        self.prev_a01[i] = core.to_unit(core.start_action())
         self.ema[i] = 0.
         self.prev_max[i] = 0.
         self.boxes[i] = [box0]
@@ -301,7 +301,7 @@ class TrackingEnv(object):
         base01 = core.to_unit(core.baseline_action())
         a01 = np.where(c['gated'][policy][:, None], a01, base01)
         if self.paired:
-            a01 = np.concatenate([a01, np.tile(core.to_unit(core.baseline_action()),
+            a01 = np.concatenate([a01, np.tile(core.to_unit(core.start_action()),
                                                (int((~policy).sum()), 1))])
         action = core.from_unit(a01)
         box, lr, best = core.postprocess(c['pred'], c['score'], self.window,
@@ -313,7 +313,7 @@ class TrackingEnv(object):
         gt = np.stack([self.videos[self.video[i]]['gt'][self.t[i]] for i in ids])
         reward = iou(out_box, gt)
         if cfg.RL.DEVIATION_COEF:
-            dev = ((a01 - core.to_unit(core.baseline_action())) ** 2).sum(1)
+            dev = ((a01 - core.to_unit(core.start_action())) ** 2).sum(1)
             reward = reward - cfg.RL.DEVIATION_COEF * dev
         if self.paired:
             # train mode: ids is policy slots 0..n-1 then their shadows n..2n-1
